@@ -9,8 +9,6 @@
 # Copyright (c) 2011 Rafael Caricio rafael@caricio.com
 
 import sys
-import os
-import logging
 import time
 import contextlib
 import urllib
@@ -21,6 +19,8 @@ from tornado.httpserver import HTTPServer
 from tornado.stack_context import NullContext
 from tornado.testing import get_unused_port
 from pyvows import Vows
+
+from urllib3.filepost import encode_multipart_formdata
 
 class AsyncTestCase(object):
 
@@ -128,11 +128,10 @@ class TornadoContext(Vows.Context, AsyncTestCase, ParentAttributeMixin):
         ParentAttributeMixin.__init__(self)
         AsyncTestCase(*args, **kwargs)
 
-        self.ignore('get_parent_argument',
+        super(TornadoContext, self).ignore( 'get_parent_argument',
                     'get_app', 'fetch', 'get_httpserver_options',
                     'get_url',
                     'get_new_ioloop', 'stack_context', 'stop', 'wait')
-
 
 class TornadoHTTPContext(Vows.Context, AsyncHTTPTestCase, ParentAttributeMixin):
 
@@ -141,7 +140,7 @@ class TornadoHTTPContext(Vows.Context, AsyncHTTPTestCase, ParentAttributeMixin):
         ParentAttributeMixin.__init__(self)
         AsyncHTTPTestCase.__init__(self, *args, **kwargs)
 
-        self.ignore('get_parent_argument',
+        super(TornadoHTTPContext, self).ignore( 'get_parent_argument',
                     'get_app', 'fetch', 'get_httpserver_options',
                     'get_url',
                     'get_new_ioloop', 'stack_context', 'stop', 'wait',
@@ -156,5 +155,22 @@ class TornadoHTTPContext(Vows.Context, AsyncHTTPTestCase, ParentAttributeMixin):
     def get(self, path):
         return self.fetch(path, method="GET")
 
-    def post(self, path, data={}):
-        return self.fetch(path, method="POST", body=urllib.urlencode(data, doseq=True))
+    def post(self, path, data={}, multipart=False):
+        """
+        Convenience wrapper for the ``http_client``.
+
+        :param multipart:
+            If True the given ``data`` is encoded "multipart/form-data" through
+            ``urllib3``
+            If the value is a tuple of two elements, then the first element is 
+            treated as the filename of the form-data section.
+        """
+        body = None
+        headers = {}
+        if multipart:
+            body, content_type = encode_multipart_formdata(data)
+            headers["Content-Type"] = content_type
+        else:
+            body = urllib.urlencode(data, doseq=True)
+
+        return self.fetch(path, method="POST", body=body, headers=headers)
